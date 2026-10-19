@@ -110,8 +110,8 @@ services:
       MYSQL_DATABASE: ${DB_DATABASE:-ecommerce_db}
       MYSQL_USER: ${DB_USERNAME:-ecommerce_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-ecommerce_password}
-    ports:
-      - "3306:3306"
+    expose:
+      - "3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
