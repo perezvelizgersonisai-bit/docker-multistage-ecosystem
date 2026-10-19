@@ -1,0 +1,22 @@
+#!/usr/bin/env php
+<?php
+
+use Illuminate\Foundation\Application;
+use Symfony\Component\Console\Input\ArgvInput;
+
+define('LARAVEL_START', microtime(true));
+
+require __DIR__.'/vendor/autoload.php';
+
+$status = (function () {
+    $app = require __DIR__.'/bootstrap/app.php';
+
+    $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+
+    return $kernel->handle(
+        $input = new ArgvInput,
+        new Symfony\Component\Console\Output\ConsoleOutput
+    );
+})();
+
+exit($status);

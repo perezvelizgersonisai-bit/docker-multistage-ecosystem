@@ -1,0 +1,147 @@
+# ==============================================================================
+# Orquestación de Ecosistema Completo con Docker Compose
+# Actividad: Ingeniería de Imágenes Eficientes (Refactorización Multi-stage)
+# ==============================================================================
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # Servicio 1: Frontend Next.js (App Router / Standalone Multi-stage)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ecommerce_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NEXT_TELEMETRY_DISABLED=1
+    networks:
+      - frontend-network
+    depends_on:
+      nginx:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ----------------------------------------------------------------------------
+  # Servicio 2: Backend Laravel 12 API (PHP 8.2 FPM Multi-stage Alpine)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ecommerce_backend
+    restart: unless-stopped
+    expose:
+      - "9000"
+    environment:
+      - APP_NAME=${APP_NAME:-E-commerce API}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_KEY=${APP_KEY:-base64:UTrUOOOsDqx6R4ekVL3o5cY7RspZvkH9rw5Hbq3qrX0=}
+      - APP_DEBUG=${APP_DEBUG:-false}
+      - APP_URL=${APP_URL:-http://localhost:8000}
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE:-ecommerce_db}
+      - DB_USERNAME=${DB_USERNAME:-ecommerce_user}
+      - DB_PASSWORD=${DB_PASSWORD:-ecommerce_password}
+      - JWT_SECRET=${JWT_SECRET:-i8ETSSX8VQcZ6OUa7h2BOVZQoe6SAcdxTlGyNmM1S5gJxFtwDzhsPRLCC8kQhdx4}
+      - JWT_TTL=${JWT_TTL:-60}
+    volumes:
+      - backend_storage:/var/www/html/storage
+    networks:
+      - backend-network
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof php-fpm || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ----------------------------------------------------------------------------
+  # Servicio 3: Servidor Web Nginx (Reverse Proxy & FastCGI Handler)
+  # ----------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: ecommerce_nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./backend:/var/www/html:ro
+    networks:
+      - frontend-network
+      - backend-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/up || exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # Servicio 4: Base de Datos Relacional MySQL 8.0
+  # ----------------------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: ecommerce_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${DB_DATABASE:-ecommerce_db}
+      MYSQL_USER: ${DB_USERNAME:-ecommerce_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-ecommerce_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD:-root_password} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+# ------------------------------------------------------------------------------
+# Redes Personalizadas para Aislamiento de Capas (Segmentación de Seguridad)
+# ----------------------------------------------------------------------------
+networks:
+  frontend-network:
+    name: ecommerce_frontend_network
+    driver: bridge
+  backend-network:
+    name: ecommerce_backend_network
+    driver: bridge
+
+# ------------------------------------------------------------------------------
+# Volúmenes Persistentes
+# ----------------------------------------------------------------------------
+volumes:
+  mysql_data:
+    name: ecommerce_mysql_data
+    driver: local
+  backend_storage:
+    name: ecommerce_backend_storage
+    driver: local
